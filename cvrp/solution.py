@@ -1,0 +1,58 @@
+"""Solution representation and output.
+
+Internally a route is a list of CUSTOMERS only, e.g. [3, 1, 4].
+The depot (0) is added only when printing. This keeps every
+move/merge operation simpler later on.
+"""
+
+from dataclasses import dataclass, field
+
+
+def route_cost(inst, route):
+    if not route:
+        return 0.0
+    d = inst.dist
+    c = d[0][route[0]] + d[route[-1]][0]
+    for a, b in zip(route, route[1:]):
+        c += d[a][b]
+    return c
+
+
+def route_load(inst, route):
+    return sum(inst.demand[c] for c in route)
+
+
+@dataclass
+class Solution:
+    routes: list = field(default_factory=list)
+
+    def __post_init__(self):
+        # empty routes would count against the vehicle limit for nothing
+        self.routes = [r for r in self.routes if r]
+
+    def cost(self, inst):
+        return sum(route_cost(inst, r) for r in self.routes)
+
+    def problems(self, inst):
+        """Quick self-check. Returns a list of strings; empty means feasible.
+        (Person B's checker is the real authority; this is a safety net.)"""
+        out = []
+        seen = [c for r in self.routes for c in r]
+        if sorted(seen) != list(inst.customers):
+            out.append("customers not visited exactly once")
+        if len(self.routes) > inst.vehicles:
+            out.append(f"{len(self.routes)} routes > {inst.vehicles} vehicles")
+        for i, r in enumerate(self.routes):
+            if route_load(inst, r) > inst.capacity:
+                out.append(f"route {i} over capacity")
+        return out
+
+    def is_feasible(self, inst):
+        return not self.problems(inst)
+
+    def format(self, inst):
+        # TODO: confirm rounding/precision rule with the instructor.
+        lines = [f"{self.cost(inst):.2f}"]
+        for r in self.routes:
+            lines.append(" ".join(map(str, [0, *r, 0])))
+        return "\n".join(lines)
