@@ -13,7 +13,11 @@ gen.py               instance generator (deterministic per --seed)
 samples/             spec example, 6-customer example, tight-vehicle edge case
 ```
 
-Run: `python main.py samples/six_customers.txt --debug`
+Run: `python main.py samples/six_customers.txt --size small --debug`
+
+Time limit: `--size small|medium|large` (30/60/180s) or `--time SECONDS`. With neither,
+the solver assumes small (30s): the input file does not say its class, and overrunning
+1.5x the limit costs far more than stopping early. The solver stops at 85% of the limit.
 
 Generate: `python gen.py --n 500 --seed 2 --layout clustered --slack 0 -o medium.txt`
 (`python gen.py -h` for all options). Vehicles = FFD bin count + `--slack`, so every
@@ -23,5 +27,6 @@ and seed for each submitted dataset.
 Open questions for the instructor (marked TODO in code):
 - stdin or file input? (both supported)
 - output cost precision/rounding (currently 2 decimals)
-- n thresholds for small / medium / large (timer.py placeholders)
+- how is each instance's time limit passed to our program? (prof: no fixed size
+  ranges, each team picks its own sizes, so we cannot infer it from n)
 - is numpy allowed? (would make parsing large matrices much faster)

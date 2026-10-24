@@ -11,16 +11,13 @@ START = time.perf_counter()   # set when this module is first imported
 
 SAFETY = 0.85
 
-# Limits from the spec. TODO: get the n thresholds for small/medium/large
-# from the instructor; these cutoffs are placeholders.
-LIMITS = [(100, 30.0), (500, 60.0), (float("inf"), 180.0)]
-
-
-def default_limit(n):
-    for max_n, limit in LIMITS:
-        if n <= max_n:
-            return limit
-    return LIMITS[-1][1]
+# Limits from the spec. The input file does not say which class an instance
+# belongs to (each team labels its own), so the grader has to tell us via
+# --size or --time. Without that we assume the shortest limit: stopping early
+# costs a little solution quality, overrunning 1.5x the limit costs 3/4 of
+# the instance's score.
+LIMITS = {"small": 30.0, "medium": 60.0, "large": 180.0}
+DEFAULT_SIZE = "small"
 
 
 class Deadline:
