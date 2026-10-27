@@ -45,7 +45,9 @@ def ffd_bins(demands, capacity):
     return len(loads)
 
 
-def generate(args):
+def generate(args, out):
+    """Write the instance to the file object `out`, one matrix row at a time
+    (the full matrix would not fit in memory for large n)."""
     rng = random.Random(args.seed)
     n = args.n
 
@@ -59,18 +61,12 @@ def generate(args):
     vehicles = ffd_bins(demand[1:], capacity) + args.slack
 
     fmt = f"{{:.{args.decimals}f}}" if args.decimals > 0 else "{:.0f}"
-    m = n + 1
-    rows = [[0.0] * m for _ in range(m)]
-    for i in range(m):
-        xi, yi = pts[i]
-        for j in range(i + 1, m):
-            rows[i][j] = rows[j][i] = math.hypot(xi - pts[j][0], yi - pts[j][1])
-
-    out = [" ".join(map(str, demand))]
-    out += [" ".join("0" if i == j else fmt.format(v) for j, v in enumerate(row))
-            for i, row in enumerate(rows)]
-    out += [f"Capacity: {capacity}", f"Vehicles: {vehicles}"]
-    return "\n".join(out) + "\n"
+    out.write(" ".join(map(str, demand)) + "\n")
+    # hypot(a-b) and hypot(b-a) are bit-identical, so rows stay symmetric
+    for i, (xi, yi) in enumerate(pts):
+        out.write(" ".join("0" if i == j else fmt.format(math.hypot(xi - x, yi - y))
+                           for j, (x, y) in enumerate(pts)) + "\n")
+    out.write(f"Capacity: {capacity}\nVehicles: {vehicles}\n")
 
 
 def main():
@@ -93,12 +89,11 @@ def main():
     ap.add_argument("-o", "--out", default=None)
     args = ap.parse_args()
 
-    text = generate(args)
     if args.out:
-        with open(args.out, "w") as f:
-            f.write(text)
+        with open(args.out, "w", newline="\n") as f:
+            generate(args, f)
     else:
-        sys.stdout.write(text)
+        generate(args, sys.stdout)
 
 
 if __name__ == "__main__":
