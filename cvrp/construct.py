@@ -25,11 +25,14 @@ def first_fit_decreasing(inst):
     return Solution(routes)
 
 
-def clarke_wright(inst):
+def clarke_wright(inst, nb=None):
     """Clarke-Wright savings (parallel version).
 
     1. One route per customer: 0 -> c -> 0.
-    2. saving s(i, j) = d[0][i] + d[0][j] - d[i][j] for every pair i < j.
+    2. saving s(i, j) = d[0][i] + d[0][j] - d[i][j] for every pair i < j,
+       or, when neighbour lists `nb` are given, only for pairs where one is
+       among the other's nearest neighbours: O(n*K) savings instead of
+       O(n^2). Far-apart pairs rarely have a large saving anyway.
     3. Scan pairs from largest saving to smallest. Merge the routes of
        i and j when:
          - they are on different routes,
@@ -51,12 +54,19 @@ def clarke_wright(inst):
 
     d0 = d[0]
     savings = []
-    for a in range(len(custs)):
-        i = custs[a]
-        di, d0i = d[i], d0[i]
-        for b in range(a + 1, len(custs)):
-            j = custs[b]
-            s = d0i + d0[j] - di[j]
+    if nb is None:
+        for a in range(len(custs)):
+            i = custs[a]
+            di, d0i = d[i], d0[i]
+            for b in range(a + 1, len(custs)):
+                j = custs[b]
+                s = d0i + d0[j] - di[j]
+                if s > 0:
+                    savings.append((s, i, j))
+    else:
+        pairs = {(i, j) if i < j else (j, i) for i in custs for j in nb[i]}
+        for i, j in pairs:
+            s = d0[i] + d0[j] - d[i][j]
             if s > 0:
                 savings.append((s, i, j))
     savings.sort(reverse=True)

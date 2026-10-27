@@ -16,10 +16,13 @@ Order of attempts:
 import random
 import time
 
+from .neighbors import neighbor_lists
 from .solution import Solution, route_load
 
+PACK_NEIGHBORS = 30       # neighbours checked by the 'near' packing mode
 
-def enforce_vehicle_limit(inst, sol: Solution, deadline=None) -> Solution:
+
+def enforce_vehicle_limit(inst, sol: Solution, deadline=None, nb=None) -> Solution:
     routes = [list(r) for r in sol.routes if r]
     if len(routes) <= inst.vehicles:
         return Solution(routes)
@@ -28,7 +31,9 @@ def enforce_vehicle_limit(inst, sol: Solution, deadline=None) -> Solution:
     if len(merged.routes) <= inst.vehicles:
         return merged
 
-    packed = _pack(inst, deadline)
+    if nb is None:
+        nb = neighbor_lists(inst, PACK_NEIGHBORS)
+    packed = _pack(inst, deadline, nb)
     # prefer fewer excess routes, then lower cost
     excess = lambda s: max(0, len(s.routes) - inst.vehicles)
     return min((merged, packed), key=lambda s: (excess(s), s.cost(inst)))
@@ -142,7 +147,7 @@ PACK_BUDGET = 0.05        # share of the remaining time the packer may use
 PACK_MAX_SECONDS = 3.0
 
 
-def _pack(inst, deadline, max_tries=300):
+def _pack(inst, deadline, nb, max_tries=300):
     """Multi-start packing; keeps the cheapest packing that fits V
     (or, if none does, the one with the fewest bins)."""
     q = inst.demand
@@ -162,7 +167,7 @@ def _pack(inst, deadline, max_tries=300):
         else:
             # perturbed decreasing order: mostly big-first, with some shuffling
             order = sorted(inst.customers, key=lambda c: -q[c] * rng.uniform(0.7, 1.3))
-        bins = _pack_once(inst, order, PACK_MODES[t % len(PACK_MODES)])
+        bins = _pack_once(inst, order, PACK_MODES[t % len(PACK_MODES)], nb)
         excess = max(0, len(bins) - inst.vehicles)
         if best_key is not None and excess > best_key[0]:
             continue                                # skip routing a worse packing
@@ -173,29 +178,38 @@ def _pack(inst, deadline, max_tries=300):
     return best
 
 
-def _pack_once(inst, order, mode):
+def _pack_once(inst, order, mode, nb):
     """mode: 'first' = first fit, 'best' = fullest bin that fits,
-    'near' = bin holding the customer closest to c (distance-aware)."""
-    d, q, Q = inst.dist, inst.demand, inst.capacity
+    'near' = bin of the nearest already-packed neighbour that has room
+    (falls back to first fit when no neighbour's bin fits)."""
+    q, Q = inst.demand, inst.capacity
     bins, loads = [], []
+    bin_of = {}
     for c in order:
-        target, score = None, None
-        dc = d[c]
-        for i, load in enumerate(loads):
-            if load + q[c] > Q:
-                continue
-            if mode == "first":
-                target = i
-                break
-            s = -load if mode == "best" else min(dc[m] for m in bins[i])
-            if score is None or s < score:
-                target, score = i, s
+        target = None
+        if mode == "near":
+            for v in nb[c]:                         # sorted nearest first
+                b = bin_of.get(v)
+                if b is not None and loads[b] + q[c] <= Q:
+                    target = b
+                    break
         if target is None:
-            bins.append([c])
-            loads.append(q[c])
-        else:
-            bins[target].append(c)
-            loads[target] += q[c]
+            best = None
+            for i, load in enumerate(loads):
+                if load + q[c] > Q:
+                    continue
+                if mode != "best":
+                    target = i
+                    break
+                if best is None or load > best:
+                    target, best = i, load
+        if target is None:
+            target = len(bins)
+            bins.append([])
+            loads.append(0.0)
+        bins[target].append(c)
+        loads[target] += q[c]
+        bin_of[c] = target
     return bins
 
 

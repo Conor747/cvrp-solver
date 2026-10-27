@@ -2,10 +2,11 @@
 
 ```
 main.py              entry point: parse -> construct -> repair -> search -> print
-cvrp/instance.py     tolerant parser (file or stdin)
+cvrp/instance.py     tolerant streaming parser (file or stdin), compact array rows
 cvrp/solution.py     routes (customers only, no depot), cost, self-check, output
 cvrp/timer.py        wall-clock deadline from program start (85% of limit)
-cvrp/construct.py    clarke_wright (savings), first_fit_decreasing (crash fallback)
+cvrp/neighbors.py    K nearest customers per customer, computed once, shared by all stages
+cvrp/construct.py    clarke_wright (savings over neighbour pairs), first_fit_decreasing (crash fallback)
 cvrp/repair.py       enforce_vehicle_limit: merge (+ejection) -> multi-start packing
 cvrp/search.py       improvement until the deadline: ruin & recreate + granular local
                      search (relocate, swap, 2-opt, 2-opt*), simulated-annealing acceptance

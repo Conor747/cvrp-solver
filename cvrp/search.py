@@ -20,10 +20,10 @@ The matrix is assumed symmetric (the spec guarantees it); 2-opt and the
 reversing 2-opt* variant rely on that.
 """
 
-import heapq
 import math
 import random
 
+from .neighbors import neighbor_lists
 from .solution import Solution
 
 K_NEIGHBORS = 30          # granular neighbourhood size
@@ -86,17 +86,6 @@ class State:
 
     def snapshot(self):
         return [r[:] for r in self.routes if r]
-
-
-def neighbor_lists(inst, k):
-    d = inst.dist
-    custs = list(inst.customers)
-    k = min(k, len(custs) - 1)
-    nb = [[] for _ in range(inst.n)]
-    for c in custs:
-        near = heapq.nsmallest(k + 1, custs, key=d[c].__getitem__)
-        nb[c] = [x for x in near if x != c][:k]
-    return nb
 
 
 # ---------------------------------------------------------------- local search
@@ -319,11 +308,14 @@ def _cheapest_anywhere(st, c):
 
 # ---------------------------------------------------------------- main loop
 
-def improve(inst, sol, deadline, seed=0, log=None):
+def improve(inst, sol, deadline, nb=None, seed=0, log=None):
     if inst.n <= 2 or not sol.routes:
         return sol
     rng = random.Random(seed)
-    nb = neighbor_lists(inst, K_NEIGHBORS)
+    if nb is None:
+        nb = neighbor_lists(inst, K_NEIGHBORS)
+    else:
+        nb = [l[:K_NEIGHBORS] for l in nb]
 
     slots = max(inst.vehicles, len(sol.routes))
     cur = State(inst, sol.routes, slots)

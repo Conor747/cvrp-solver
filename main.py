@@ -19,15 +19,19 @@ import sys
 from cvrp import timer                      # import first: starts the clock
 from cvrp.instance import read_instance
 from cvrp.construct import clarke_wright, first_fit_decreasing
+from cvrp.neighbors import neighbor_lists
 from cvrp.repair import enforce_vehicle_limit
 from cvrp.search import improve
 
+K_NEIGHBORS = 100       # Clarke-Wright uses all 100; repair and search use fewer
+
 
 def solve(inst, deadline, log=None):
-    sol = clarke_wright(inst)
-    sol = enforce_vehicle_limit(inst, sol, deadline)
+    nb = neighbor_lists(inst, K_NEIGHBORS)
+    sol = clarke_wright(inst, nb)
+    sol = enforce_vehicle_limit(inst, sol, deadline, nb)
     try:
-        better = improve(inst, sol, deadline, log=log)
+        better = improve(inst, sol, deadline, nb=nb, log=log)
         if better.is_feasible(inst) or not sol.is_feasible(inst):
             sol = better
     except Exception as e:                  # keep the constructed solution
