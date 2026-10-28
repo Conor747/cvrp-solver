@@ -69,14 +69,21 @@ def prepare(entry):
     path = os.path.join(CACHE, entry["name"] + ".txt")
     if os.path.exists(path):
         return path
-    tmp = path + ".part"
+    tmp = f"{path}.{os.getpid()}.part"      # unique: harness runs may build in parallel
     if "vrp" in entry:
         convert_vrp(os.path.join(BENCH, "cvrplib", entry["vrp"] + ".vrp"), tmp,
                     entry["vehicles"], entry["size"])
     else:
         subprocess.run([sys.executable, os.path.join(ROOT, "gen.py"), "--size", entry["size"],
                         *entry["gen"].split(), "-o", tmp], check=True)
-    os.replace(tmp, path)
+    try:
+        os.replace(tmp, path)
+    except OSError:
+        # Windows: another harness run finished the same (identical) file
+        # first and has it open. Use theirs.
+        os.remove(tmp)
+        if not os.path.exists(path):
+            raise
     return path
 
 
@@ -169,12 +176,14 @@ def score(t, limit, cost, best):
 
 # ---------------------------------------------------------------- running
 
-def run_one(entry, path, limit, seed):
+def run_one(entry, path, limit, seed, params):
     cmd = [sys.executable, os.path.join(ROOT, "main.py"), path,
            "--time", f"{limit:g}", "--seed", str(seed)]
+    env = dict(os.environ, CVRP_PARAMS=",".join(params)) if params else None
     t = time.perf_counter()
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=1.5 * limit + 10)
+        p = subprocess.run(cmd, capture_output=True, text=True, env=env,
+                           timeout=1.5 * limit + 10)
         out, err = p.stdout, p.stderr
     except subprocess.TimeoutExpired:
         out, err = "", "killed after 1.5x limit"
@@ -197,14 +206,16 @@ def evaluate(args):
         sys.exit("no instances selected")
     scale = 1.0 if args.full else args.scale
     print(f"{len(entries)} instances x {len(args.seeds)} seeds, "
-          f"{'full limits' if scale == 1 else f'{scale:.0%} of each limit'}, {args.jobs} parallel")
+          f"{'full limits' if scale == 1 else f'{scale:.0%} of each limit'}, {args.jobs} parallel"
+          f"{', params ' + ' '.join(args.param) if args.param else ''}")
 
     paths = {e["name"]: prepare(e) for e in entries}
     jobs = [(e, s) for e in entries for s in args.seeds]
     jobs.sort(key=lambda j: -LIMITS[j[0]["size"]])          # long runs first
     raw = []
     with cf.ThreadPoolExecutor(args.jobs) as ex:
-        futs = [ex.submit(run_one, e, paths[e["name"]], LIMITS[e["size"]] * scale, s) for e, s in jobs]
+        futs = [ex.submit(run_one, e, paths[e["name"]], LIMITS[e["size"]] * scale, s, args.param)
+                for e, s in jobs]
         for i, f in enumerate(cf.as_completed(futs), 1):
             r = f.result()
             raw.append(r)
@@ -224,19 +235,21 @@ def evaluate(args):
     # best known: CVRPLIB value, or the best this harness has ever seen
     os.makedirs(RESULTS, exist_ok=True)
     best_path = os.path.join(RESULTS, "best_known.json")
-    best = load_json(best_path, {})
+    best = load_json(best_path, {})              # re-read: other runs may have updated it
     for e in entries:
         costs = [r["cost"] for r in runs if r["instance"] == e["name"] and r["cost"] is not None]
         cands = [c for c in [e.get("bks"), best.get(e["name"]), *costs] if c is not None]
         if cands:
             best[e["name"]] = min(cands)
-    with open(best_path, "w") as f:
+    tmp = f"{best_path}.{os.getpid()}"
+    with open(tmp, "w") as f:
         json.dump(best, f, indent=1, sort_keys=True)
+    os.replace(tmp, best_path)                   # atomic: safe with parallel harness runs
     for r in runs:
         r["score"] = score(r["wall"], r["limit"], r["cost"], best.get(r["instance"], 1.0))
 
     result = dict(label=args.save, mode="full" if scale == 1 else f"scale {scale}",
-                  seeds=args.seeds, jobs=args.jobs, runs=runs)
+                  seeds=args.seeds, jobs=args.jobs, params=args.param or [], runs=runs)
     report(result, best)
     if args.save:
         with open(os.path.join(RESULTS, args.save + ".json"), "w") as f:
@@ -290,7 +303,9 @@ def compare(a_name, b_name):
     if (a["mode"], a["seeds"], a["jobs"]) != (b["mode"], b["seeds"], b["jobs"]):
         print(f"WARNING: different settings ({a['mode']}, {a['jobs']} jobs vs "
               f"{b['mode']}, {b['jobs']} jobs); differences may not be meaningful\n")
-    print(f"{'instance':12} {a_name:>12} {b_name:>12} {'change':>9} {'noise':>8}")
+    for name, res in ((a_name, a), (b_name, b)):
+        print(f"{name}: {' '.join(res.get('params') or []) or 'default parameters'}")
+    print(f"\n{'instance':12} {a_name:>12} {b_name:>12} {'change':>9} {'noise':>8}")
     for name in dict.fromkeys(r["instance"] for r in a["runs"]):
         sa, sb = summarize(a["runs"], name), summarize(b["runs"], name)
         if not (sa["mean"] and sb["mean"]):
@@ -312,6 +327,8 @@ def main():
     ap.add_argument("--jobs", type=int, default=4, help="runs in parallel")
     ap.add_argument("--group", nargs="+", default=["core"], help="core and/or big")
     ap.add_argument("--only", nargs="+", help="instances whose name contains any of these")
+    ap.add_argument("--param", nargs="+", metavar="NAME=VALUE",
+                    help="override search parameters, e.g. T_START=0.1 (see cvrp/search.py)")
     ap.add_argument("--save", help="store results under this name")
     ap.add_argument("--compare", nargs=2, metavar=("A", "B"))
     args = ap.parse_args()

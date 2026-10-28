@@ -21,12 +21,16 @@ reversing 2-opt* variant rely on that.
 """
 
 import math
+import os
 import random
 
 from .neighbors import neighbor_lists
 from .solution import Solution
 
-K_NEIGHBORS = 30          # granular neighbourhood size
+# Tuned with bench/evaluate.py (Oct 28): quick-mode screening of each value,
+# then a full-limit check, 3 seeds each. Tried and rejected: T_START 0.1, 2, 4;
+# T_END 0.001, 0.02; AVG_REMOVED 5, 15, 20; K_NEIGHBORS 40; MAX_STRING 5.
+K_NEIGHBORS = 20          # granular neighbourhood size (was 30: 20 = more iterations)
 EPS = 1e-9
 
 # ruin & recreate (values from the SISR paper, scaled down)
@@ -35,8 +39,28 @@ MAX_STRING = 10           # max string length
 BLINK_RATE = 0.01
 
 # simulated annealing, as multiples of the average edge length
-T_START = 0.3
+T_START = 1.0             # was 0.3: a hotter start escapes local optima better
 T_END = 0.005
+
+TUNABLE = ("K_NEIGHBORS", "AVG_REMOVED", "MAX_STRING", "BLINK_RATE", "T_START", "T_END")
+
+
+def _apply_overrides():
+    """Experiments only: CVRP_PARAMS="T_START=0.1,AVG_REMOVED=15" overrides
+    the constants above (set by bench/evaluate.py --param). Never set in
+    normal runs; a malformed value is ignored rather than crashing."""
+    for item in filter(None, os.environ.get("CVRP_PARAMS", "").split(",")):
+        name, _, value = item.partition("=")
+        name = name.strip()
+        if name in TUNABLE:
+            try:
+                kind = type(globals()[name])
+                globals()[name] = kind(float(value)) if kind is int else float(value)
+            except ValueError:
+                pass
+
+
+_apply_overrides()
 
 
 # ---------------------------------------------------------------- state

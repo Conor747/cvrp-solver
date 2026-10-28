@@ -38,7 +38,11 @@ python bench/evaluate.py --save after
 python bench/evaluate.py --compare before after
 python bench/evaluate.py --full              # real limits (~15 min)
 python bench/evaluate.py --group big         # 5000 / 10000 customers
+python bench/evaluate.py --save t1 --param T_START=0.5 K_NEIGHBORS=25   # try parameters
 ```
+`--param` overrides the tunable constants at the top of `cvrp/search.py` for that run
+only (through the CVRP_PARAMS environment variable; normal runs never set it). To test
+a variant fairly, run a fresh default baseline at the same time, with the same settings.
 Each run is a separate process timed from outside; an independent checker validates
 the output and scores it with the spec's formula. Benchmarks: 6 CVRPLIB X instances
 (`bench/cvrplib/`, vehicles = routes of the best-known solution) plus generated ones,
