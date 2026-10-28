@@ -26,12 +26,12 @@ from cvrp.search import improve
 K_NEIGHBORS = 100       # Clarke-Wright uses all 100; repair and search use fewer
 
 
-def solve(inst, deadline, log=None):
+def solve(inst, deadline, log=None, seed=0):
     nb = neighbor_lists(inst, K_NEIGHBORS)
     sol = clarke_wright(inst, nb)
     sol = enforce_vehicle_limit(inst, sol, deadline, nb)
     try:
-        better = improve(inst, sol, deadline, nb=nb, log=log)
+        better = improve(inst, sol, deadline, nb=nb, seed=seed, log=log)
         if better.is_feasible(inst) or not sol.is_feasible(inst):
             sol = better
     except Exception as e:                  # keep the constructed solution
@@ -46,6 +46,8 @@ def main():
                     help="small | medium | large; sets the time limit")
     ap.add_argument("--time", type=float, default=None,
                     help="time limit in seconds (overrides --size)")
+    ap.add_argument("--seed", type=int, default=0,
+                    help="random seed for the search (for experiments)")
     ap.add_argument("--debug", action="store_true")
     args = ap.parse_args()
 
@@ -63,7 +65,7 @@ def main():
 
     try:
         log = (lambda msg: print(msg, file=sys.stderr)) if args.debug else None
-        sol = solve(inst, deadline, log)
+        sol = solve(inst, deadline, log, args.seed)
     except Exception as e:                  # never exit without an answer
         print(f"solver crashed: {e!r}; using fallback", file=sys.stderr)
         sol = first_fit_decreasing(inst)

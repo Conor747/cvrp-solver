@@ -11,6 +11,7 @@ cvrp/repair.py       enforce_vehicle_limit: merge (+ejection) -> multi-start pac
 cvrp/search.py       improvement until the deadline: ruin & recreate + granular local
                      search (relocate, swap, 2-opt, 2-opt*), simulated-annealing acceptance
 gen.py               instance generator (deterministic per --seed)
+bench/evaluate.py    evaluation harness: multi-seed runs, independent checker, spec scoring
 samples/             spec example, 6-customer example, tight-vehicle edge case
 ```
 
@@ -25,6 +26,20 @@ Generate: `python gen.py --n 500 --seed 2 --layout clustered --slack 0 -o medium
 (`python gen.py -h` for all options). Vehicles = FFD bin count + `--slack`, so every
 instance is feasible; `--slack 0` gives the tightest ones. Record the exact command
 and seed for each submitted dataset.
+
+Evaluate (see `python bench/evaluate.py -h`):
+```
+python bench/evaluate.py --save before       # quick: 25% of each limit, 3 seeds (~4 min)
+# ...change something...
+python bench/evaluate.py --save after
+python bench/evaluate.py --compare before after
+python bench/evaluate.py --full              # real limits (~15 min)
+python bench/evaluate.py --group big         # 5000 / 10000 customers
+```
+Each run is a separate process timed from outside; an independent checker validates
+the output and scores it with the spec's formula. Benchmarks: 6 CVRPLIB X instances
+(`bench/cvrplib/`, vehicles = routes of the best-known solution) plus generated ones,
+rebuilt on demand in `bench/cache/`. Only compare runs made with the same settings.
 
 Open questions for the instructor (marked TODO in code):
 - stdin or file input? (both supported)
