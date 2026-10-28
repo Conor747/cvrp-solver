@@ -1,15 +1,22 @@
 """Wall-clock deadline, measured from program start.
 
 The scoring penalty only kicks in after the time limit L, so the solver
-should use most of L. SAFETY leaves room for startup, output, and an
-unknown grading machine.
+should use most of L. The search stops at L - max(MIN_MARGIN, MARGIN * L),
+i.e. 28s / 57s / 171s for the three classes.
+
+What the margin has to cover is small and measured: Python startup before
+this module is imported, finishing the current iteration, and printing
+(0.05-0.4s in total on a laptop). The margin is 5-10x that, for a slower
+grading machine. It cannot cover slow setup (parsing, Clarke-Wright): that
+runs before the search and is a speed problem, not a margin problem.
 """
 
 import time
 
 START = time.perf_counter()   # set when this module is first imported
 
-SAFETY = 0.85
+MARGIN = 0.05                 # share of the limit kept free
+MIN_MARGIN = 2.0              # seconds, at least
 
 # Limits from the spec. The input file does not say which class an instance
 # belongs to (each team labels its own), so the grader has to tell us via
@@ -22,7 +29,9 @@ DEFAULT_SIZE = "small"
 
 class Deadline:
     def __init__(self, limit_seconds):
-        self.end = START + limit_seconds * SAFETY
+        margin = max(MIN_MARGIN, MARGIN * limit_seconds)
+        # very short limits (quick tests): never stop before half the limit
+        self.end = START + max(limit_seconds - margin, limit_seconds / 2)
 
     def elapsed(self):
         return time.perf_counter() - START

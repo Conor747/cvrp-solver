@@ -18,7 +18,8 @@ Run: `python main.py samples/six_customers.txt --size small --debug`
 
 Time limit: `--size small|medium|large` (30/60/180s) or `--time SECONDS`. With neither,
 the solver assumes small (30s): the input file does not say its class, and overrunning
-1.5x the limit costs far more than stopping early. The solver stops at 85% of the limit.
+1.5x the limit costs far more than stopping early. The search stops at
+L - max(2s, 5% of L): 28s / 57s / 171s. Startup + printing measured at ~0.05-0.4s.
 
 Generate: `python gen.py --n 500 --seed 2 --layout clustered --slack 0 -o medium.txt`
 (`python gen.py -h` for all options). Vehicles = FFD bin count + `--slack`, so every
