@@ -17,15 +17,18 @@ samples/             spec example, 6-customer example, tight-vehicle edge case
 
 Run: `python main.py samples/six_customers.txt --size small --debug`
 
-Time limit: `--size small|medium|large` (30/60/180s) or `--time SECONDS`. With neither,
-the solver assumes small (30s): the input file does not say its class, and overrunning
-1.5x the limit costs far more than stopping early. The search stops at
+Time limit: taken from the size word on the first line of the instance file
+(`small`/`medium`/`large`, any capitalization: 30/60/180s), as the instructor requires
+for every team's test cases. `--time SECONDS` or `--size` override it. If the word is
+missing or unknown, the solver assumes small (30s): overrunning 1.5x the limit costs
+far more than stopping early. The search stops at
 L - max(2s, 5% of L): 28s / 57s / 171s. Startup + printing measured at ~0.05-0.4s.
 
-Generate: `python gen.py --n 500 --seed 2 --layout clustered --slack 0 -o medium.txt`
+Generate: `python gen.py --size medium --n 500 --seed 2 --layout clustered --slack 0 -o medium.txt`
 (`python gen.py -h` for all options). Vehicles = FFD bin count + `--slack`, so every
 instance is feasible; `--slack 0` gives the tightest ones. Record the exact command
-and seed for each submitted dataset.
+and seed for each submitted dataset. Distances are written with at most 6 significant
+digits, as required.
 
 Evaluate (see `python bench/evaluate.py -h`):
 ```
@@ -44,6 +47,5 @@ rebuilt on demand in `bench/cache/`. Only compare runs made with the same settin
 Open questions for the instructor (marked TODO in code):
 - stdin or file input? (both supported)
 - output cost precision/rounding (currently 2 decimals)
-- how is each instance's time limit passed to our program? (prof: no fixed size
-  ranges, each team picks its own sizes, so we cannot infer it from n)
-- is numpy allowed? (would make parsing large matrices much faster)
+- numpy: allowed via requirements.txt (load time not counted). Measured gain is small
+  (~4s of setup at 10k customers), so we stay standard-library only for now.

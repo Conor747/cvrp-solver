@@ -5,8 +5,13 @@ The same command + seed always produces the same file (the spec asks us
 to submit both with each dataset).
 
 Usage:
-    python gen.py --n 100 --seed 1 > small.txt
-    python gen.py --n 500 --seed 2 --layout clustered --slack 0 -o medium.txt
+    python gen.py --size small --n 100 --seed 1 > small.txt
+    python gen.py --size medium --n 500 --seed 2 --layout clustered --slack 0 -o medium.txt
+
+The first line of the file is the size word (small / medium / large), as
+the instructor requires for every team's test cases; it sets the solver's
+time limit (30 / 60 / 180s). Distances are written with at most 6
+significant digits (scientific notation for very large values).
 
 Vehicles = (bins needed by first-fit-decreasing) + slack, so every
 generated instance is guaranteed feasible. --slack 0 gives the tightest
@@ -60,11 +65,13 @@ def generate(args, out):
     capacity = args.capacity or max(hi, round((lo + hi) / 2 * args.route_size))
     vehicles = ffd_bins(demand[1:], capacity) + args.slack
 
-    fmt = f"{{:.{args.decimals}f}}" if args.decimals > 0 else "{:.0f}"
+    dec = args.decimals
+    out.write(args.size + "\n")
     out.write(" ".join(map(str, demand)) + "\n")
-    # hypot(a-b) and hypot(b-a) are bit-identical, so rows stay symmetric
+    # hypot(a-b) and hypot(b-a) are bit-identical, so rows stay symmetric;
+    # round to --decimals, then to at most 6 significant digits
     for i, (xi, yi) in enumerate(pts):
-        out.write(" ".join("0" if i == j else fmt.format(math.hypot(xi - x, yi - y))
+        out.write(" ".join("0" if i == j else f"{round(math.hypot(xi - x, yi - y), dec):.6g}"
                            for j, (x, y) in enumerate(pts)) + "\n")
     out.write(f"Capacity: {capacity}\nVehicles: {vehicles}\n")
 
@@ -72,6 +79,8 @@ def generate(args, out):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--size", choices=["small", "medium", "large"], required=True,
+                    help="size class written on the first line (sets the time limit)")
     ap.add_argument("--n", type=int, required=True, help="number of customers (excl. depot)")
     ap.add_argument("--seed", type=int, required=True)
     ap.add_argument("--layout", choices=["uniform", "clustered"], default="uniform")
@@ -85,7 +94,8 @@ def main():
                     help="target customers per route when capacity is derived")
     ap.add_argument("--slack", type=int, default=1,
                     help="extra vehicles on top of the FFD packing (0 = tight)")
-    ap.add_argument("--decimals", type=int, default=1)
+    ap.add_argument("--decimals", type=int, default=1,
+                    help="decimal places for distances (capped at 6 significant digits)")
     ap.add_argument("-o", "--out", default=None)
     args = ap.parse_args()
 

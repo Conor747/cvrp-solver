@@ -1,14 +1,16 @@
 """Parse a CVRP instance.
 
-Expected format (from the spec):
-    line 1        : n demands, depot first (always 0)
+Expected format (from the spec and the instructor's announcement):
+    line 1        : small | medium | large   (any capitalization)
+    line 2        : n demands, depot first (always 0)
     next n lines  : n x n distance matrix
     then          : "Capacity: Q"
     then          : "Vehicles: V"
 
-The parser is deliberately tolerant: extra spaces, blank lines, the
-Capacity/Vehicles lines appearing in either order (or before the matrix),
-and matrix rows wrapped over odd line breaks are all accepted.
+The parser is deliberately tolerant: a missing or unknown size word, extra
+spaces, blank lines, scientific notation (1.5e+03), the Capacity/Vehicles
+lines appearing in either order (or before the matrix), and matrix rows
+wrapped over odd line breaks are all accepted.
 
 It streams the input line by line and stores each matrix row as a compact
 array of doubles (8 bytes per entry instead of ~32 for a list of floats),
@@ -28,24 +30,36 @@ class Instance:
     dist: list                 # dist[i][j]; each row is an array('d')
     capacity: float
     vehicles: int
+    size: str = None           # word on the first line, lowercased; None if absent
 
     @property
     def customers(self):
         return range(1, self.n)
 
 
-_KEY_RE = re.compile(r"(capacity|vehicles)\s*:?\s*([-+]?\d+(?:\.\d+)?)", re.IGNORECASE)
+_NUM = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
+_KEY_RE = re.compile(rf"(capacity|vehicles)\s*:?\s*({_NUM})", re.IGNORECASE)
 _SHORT = 256                   # keyword lines are short; matrix rows usually aren't
 
 
 def parse_lines(lines) -> Instance:
     keys = {}
+    size = None
     demand = None
     dist = []
     pending = []               # tokens of a matrix row split over several lines
     n = 0
 
     for line in lines:
+        if demand is None and len(line) < _SHORT:
+            # header: the size word on the first line ("small", "LARGE", ...).
+            # Any short line without digits before the demands is skipped
+            # rather than crashing on it; its first word is taken as the size.
+            text = line.strip().lstrip("﻿")
+            if text and not any(ch.isdigit() for ch in text):
+                if size is None:
+                    size = text.split()[0].lower()
+                continue
         # Only short lines (or the start of long ones) can hold a keyword.
         if len(line) < _SHORT or _KEY_RE.search(line, 0, _SHORT):
             found = _KEY_RE.findall(line)
@@ -76,8 +90,8 @@ def parse_lines(lines) -> Instance:
         raise ValueError(f"Expected {n} matrix rows, found {len(dist)}")
     if "capacity" not in keys or "vehicles" not in keys:
         raise ValueError("Missing 'Capacity:' or 'Vehicles:' line")
-    return Instance(n=n, demand=demand, dist=dist,
-                    capacity=keys["capacity"], vehicles=int(keys["vehicles"]))
+    return Instance(n=n, demand=demand, dist=dist, capacity=keys["capacity"],
+                    vehicles=int(round(keys["vehicles"])), size=size)
 
 
 def parse_text(text: str) -> Instance:

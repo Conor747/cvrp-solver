@@ -71,15 +71,16 @@ def prepare(entry):
         return path
     tmp = path + ".part"
     if "vrp" in entry:
-        convert_vrp(os.path.join(BENCH, "cvrplib", entry["vrp"] + ".vrp"), tmp, entry["vehicles"])
+        convert_vrp(os.path.join(BENCH, "cvrplib", entry["vrp"] + ".vrp"), tmp,
+                    entry["vehicles"], entry["size"])
     else:
-        subprocess.run([sys.executable, os.path.join(ROOT, "gen.py"), *entry["gen"].split(), "-o", tmp],
-                       check=True)
+        subprocess.run([sys.executable, os.path.join(ROOT, "gen.py"), "--size", entry["size"],
+                        *entry["gen"].split(), "-o", tmp], check=True)
     os.replace(tmp, path)
     return path
 
 
-def convert_vrp(src, dst, vehicles):
+def convert_vrp(src, dst, vehicles, size):
     """CVRPLIB EUC_2D -> course format, distances rounded to the nearest
     integer (the convention CVRPLIB's best-known costs use)."""
     text = open(src).read()
@@ -97,6 +98,7 @@ def convert_vrp(src, dst, vehicles):
             demand[int(t[0])] = int(t[1])
     ids = sorted(coords)                    # node 1 is the depot in CVRPLIB
     with open(dst, "w", newline="\n") as f:
+        f.write(size + "\n")
         f.write(" ".join(str(demand[i]) for i in ids) + "\n")
         for i in ids:
             xi, yi = coords[i]
@@ -113,10 +115,10 @@ class Inst:
         nums, keys = [], {}
         with open(path) as f:
             for line in f:
-                m = re.findall(r"(capacity|vehicles)\s*:?\s*([\d.]+)", line, re.I)
+                m = re.findall(r"(capacity|vehicles)\s*:?\s*([-+]?[\d.]+(?:[eE][-+]?\d+)?)", line, re.I)
                 for k, v in m:
                     keys[k.lower()] = float(v)
-                if not m and line.strip():
+                if not m and any(ch.isdigit() for ch in line):   # skips the size word
                     nums.append(line)
         self.demand = [float(x) for x in nums[0].split()]
         self.n = len(self.demand)

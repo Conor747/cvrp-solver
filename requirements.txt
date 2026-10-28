@@ -1,0 +1,2 @@
+# No third-party packages: the solver, generator and harness use only the
+# Python standard library (tested with Python 3.13).

@@ -3,11 +3,13 @@
 Usage:
     python main.py instance.txt                # read from a file
     python main.py < instance.txt              # read from stdin
-    python main.py instance.txt --size large   # 180s limit (small=30, medium=60)
-    python main.py instance.txt --time 45      # explicit limit in seconds
+    python main.py instance.txt --size large   # override: 180s (small=30, medium=60)
+    python main.py instance.txt --time 45      # override: explicit limit in seconds
     python main.py instance.txt --debug        # self-check report on stderr
 
-Without --size or --time the limit is 30s (assume small, the safest guess).
+The time limit comes from the size word on the first line of the instance
+(small / medium / large, any capitalization). Priority: --time, --size, the
+file's word, then 30s (assume small, the safest guess).
 
 Answer goes to stdout; anything diagnostic goes to stderr so it never
 pollutes the graded output.
@@ -51,17 +53,21 @@ def main():
     ap.add_argument("--debug", action="store_true")
     args = ap.parse_args()
 
-    if args.size is not None and args.size not in timer.LIMITS:
-        # an unknown value must not kill the run: no output scores 0
-        print(f"unknown --size {args.size!r}; assuming {timer.DEFAULT_SIZE}",
-              file=sys.stderr)
-        args.size = None
+    inst = read_instance(args.path)       # the clock is already running
+
+    # an unknown size word must not kill the run: no output scores 0
+    for source, word in (("--size", args.size), ("file", inst.size)):
+        if word is not None and word not in timer.LIMITS:
+            print(f"unknown size {word!r} from {source}; ignoring it", file=sys.stderr)
     if args.time is not None:
-        limit = args.time
+        limit, source = args.time, "--time"
+    elif args.size in timer.LIMITS:
+        limit, source = timer.LIMITS[args.size], "--size"
+    elif inst.size in timer.LIMITS:
+        limit, source = timer.LIMITS[inst.size], f"file says {inst.size}"
     else:
-        limit = timer.LIMITS[args.size or timer.DEFAULT_SIZE]
+        limit, source = timer.LIMITS[timer.DEFAULT_SIZE], "default: assumed small"
     deadline = timer.Deadline(limit)
-    inst = read_instance(args.path)
 
     try:
         log = (lambda msg: print(msg, file=sys.stderr)) if args.debug else None
@@ -74,9 +80,7 @@ def main():
 
     if args.debug:
         probs = sol.problems(inst)
-        print(f"[debug] limit={limit:g}s"
-              f"{'' if args.time or args.size else ' (default: assumed small)'}",
-              file=sys.stderr)
+        print(f"[debug] limit={limit:g}s ({source})", file=sys.stderr)
         print(f"[debug] n={inst.n} routes={len(sol.routes)}/{inst.vehicles} "
               f"cost={sol.cost(inst):.2f} time={deadline.elapsed():.3f}s "
               f"{'FEASIBLE' if not probs else 'INFEASIBLE: ' + '; '.join(probs)}",
