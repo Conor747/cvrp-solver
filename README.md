@@ -13,6 +13,8 @@ cvrp/search.py       improvement until the deadline: ruin & recreate + granular 
 gen.py               instance generator (deterministic per --seed)
 bench/evaluate.py    evaluation harness: multi-seed runs, independent checker, spec scoring
 bench/robustness.py  edge-case suite (impossible instances, odd formats/values); run before committing
+datasets/            our submitted datasets: make_datasets.py builds + verifies them, MANIFEST.md
+                     lists every command, seed and SHA-256 (files go to datasets/out/, not in git)
 samples/             spec example, 6-customer example, tight-vehicle edge case
 ```
 
