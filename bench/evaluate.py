@@ -1,27 +1,3 @@
-"""Evaluation harness: run the solver the way the grader does and score it.
-
-Each run is a separate `python main.py` process, timed from outside. Its
-output is checked by an independent checker (no code shared with the
-solver) and scored with the spec's formula:
-
-    score = 1 / (0.5 * (2^max(0, t/L - 1) + cost/best))
-    infeasible or wrong output -> 0,   t > 1.5 L -> 0.25
-
-`best` is the best-known solution for CVRPLIB instances, and the best cost
-ever seen by this harness for generated ones (bench/results/best_known.json).
-
-Usage, from the repo root:
-    python bench/evaluate.py                    # quick: 25% of each limit, 3 seeds
-    python bench/evaluate.py --full             # real time limits
-    python bench/evaluate.py --group big        # 5000 / 10000 customers
-    python bench/evaluate.py --only X-n101      # instances whose name contains this
-    python bench/evaluate.py --save before      # store as bench/results/before.json
-    python bench/evaluate.py --compare before after
-
-Compare two runs only if they used the same mode, seeds and --jobs: parallel
-runs share the CPU, which lowers iteration counts.
-"""
-
 import argparse
 import concurrent.futures as cf
 import json
@@ -60,11 +36,7 @@ SUITE = [
     dict(name="gen-10000",   group="big",  size="large", gen="--n 10000 --seed 1 --slack 1"),
 ]
 
-
-# ---------------------------------------------------------------- instances
-
 def prepare(entry):
-    """Return the path of the instance file, building it in bench/cache if needed."""
     os.makedirs(CACHE, exist_ok=True)
     path = os.path.join(CACHE, entry["name"] + ".txt")
     if os.path.exists(path):
@@ -88,8 +60,6 @@ def prepare(entry):
 
 
 def convert_vrp(src, dst, vehicles, size):
-    """CVRPLIB EUC_2D -> course format, distances rounded to the nearest
-    integer (the convention CVRPLIB's best-known costs use)."""
     text = open(src).read()
     capacity = int(re.search(r"CAPACITY\s*:\s*(\d+)", text).group(1))
     coords, demand, section = {}, {}, None
@@ -113,9 +83,6 @@ def convert_vrp(src, dst, vehicles, size):
                              for j in ids) + "\n")
         f.write(f"Capacity: {capacity}\nVehicles: {vehicles}\n")
 
-
-# ---------------------------------------------------------------- checker
-
 class Inst:
     """Minimal independent reader (deliberately not cvrp/instance.py)."""
     def __init__(self, path):
@@ -125,7 +92,7 @@ class Inst:
                 m = re.findall(r"(capacity|vehicles)\s*:?\s*([-+]?[\d.]+(?:[eE][-+]?\d+)?)", line, re.I)
                 for k, v in m:
                     keys[k.lower()] = float(v)
-                if not m and any(ch.isdigit() for ch in line):   # skips the size word
+                if not m and any(ch.isdigit() for ch in line):
                     nums.append(line)
         self.demand = [float(x) for x in nums[0].split()]
         self.n = len(self.demand)
@@ -137,7 +104,6 @@ class Inst:
 
 
 def check(inst, stdout):
-    """Validate the solver's output. Returns (cost, None) or (None, reason)."""
     lines = [l.split() for l in stdout.strip().splitlines() if l.strip()]
     if not lines:
         return None, "no output"
@@ -174,9 +140,6 @@ def score(t, limit, cost, best):
     if t > 1.5 * limit:
         return 0.25
     return 1.0 / (0.5 * (2 ** max(0.0, t / limit - 1) + cost / best))
-
-
-# ---------------------------------------------------------------- running
 
 def run_one(entry, path, limit, seed, params):
     cmd = [sys.executable, os.path.join(ROOT, "main.py"), path,
@@ -223,7 +186,6 @@ def evaluate(args):
             raw.append(r)
             print(f"  [{i}/{len(futs)}] {r['instance']} seed {r['seed']}: {r['wall']:.1f}s", flush=True)
 
-    # check outputs (each instance parsed once)
     runs = []
     for e in entries:
         inst = Inst(paths[e["name"]])
@@ -233,11 +195,10 @@ def evaluate(args):
                 why += f" | stderr: {r['stderr'].strip()[-200:]}"
             runs.append(dict(instance=e["name"], size=e["size"], n=inst.n, seed=r["seed"],
                              limit=r["limit"], wall=r["wall"], cost=cost, error=why))
-
-    # best known: CVRPLIB value, or the best this harness has ever seen
+    
     os.makedirs(RESULTS, exist_ok=True)
     best_path = os.path.join(RESULTS, "best_known.json")
-    best = load_json(best_path, {})              # re-read: other runs may have updated it
+    best = load_json(best_path, {})
     for e in entries:
         costs = [r["cost"] for r in runs if r["instance"] == e["name"] and r["cost"] is not None]
         cands = [c for c in [e.get("bks"), best.get(e["name"]), *costs] if c is not None]
@@ -246,7 +207,7 @@ def evaluate(args):
     tmp = f"{best_path}.{os.getpid()}"
     with open(tmp, "w") as f:
         json.dump(best, f, indent=1, sort_keys=True)
-    os.replace(tmp, best_path)                   # atomic: safe with parallel harness runs
+    os.replace(tmp, best_path)
     for r in runs:
         r["score"] = score(r["wall"], r["limit"], r["cost"], best.get(r["instance"], 1.0))
 
@@ -257,9 +218,6 @@ def evaluate(args):
         with open(os.path.join(RESULTS, args.save + ".json"), "w") as f:
             json.dump(result, f, indent=1)
         print(f"\nsaved as bench/results/{args.save}.json")
-
-
-# ---------------------------------------------------------------- reporting
 
 def summarize(runs, name):
     rs = [r for r in runs if r["instance"] == name]
