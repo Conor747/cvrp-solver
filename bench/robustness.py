@@ -1,17 +1,3 @@
-"""Robustness suite: odd-but-plausible inputs from other teams.
-
-Every case runs the real solver (python main.py) with a short time limit and
-checks that it
-  - exits normally and prints an answer (a crash or no output scores 0),
-  - finishes within the limit,
-  - passes the independent checker in bench/evaluate.py when the instance is
-    feasible; for impossible instances the output must still be well formed.
-
-Usage, from the repo root:
-    python bench/robustness.py            # all cases
-    python bench/robustness.py dup zero   # cases whose name contains any of these
-"""
-
 import concurrent.futures as cf
 import math
 import os
@@ -22,11 +8,10 @@ import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from evaluate import Inst, check  # noqa: E402
+from evaluate import Inst, check
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LIMIT = 3.0                     # seconds per case (--time)
-
+LIMIT = 3.0
 
 def euclid(pts, decimals=1):
     return [[round(math.hypot(a[0] - b[0], a[1] - b[1]), decimals) for b in pts] for a in pts]
@@ -146,14 +131,14 @@ def run_case(name, text, feasible, tmpdir):
         problems.append("no output")
     if wall > LIMIT:
         problems.append(f"took {wall:.1f}s > {LIMIT:g}s")
-    if "crashed" in err:                             # a safety net caught an exception
+    if "crashed" in err:
         problems.append("internal crash (caught by a fallback)")
     verdict = ""
     if out.strip():
         try:
             inst = Inst(path)
             cost, why = check(inst, out)
-        except Exception as e:                       # checker can't read the instance
+        except Exception as e:
             cost, why = None, f"checker could not read instance ({e!r})"
         if feasible is True and why:
             problems.append(f"answer rejected: {why}")
