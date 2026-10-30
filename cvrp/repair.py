@@ -13,6 +13,7 @@ Order of attempts:
   4. Return the best attempt either way, so the program always prints.
 """
 
+import bisect
 import random
 import time
 
@@ -20,6 +21,7 @@ from .neighbors import neighbor_lists
 from .solution import Solution, route_load
 
 PACK_NEIGHBORS = 30       # neighbours checked by the 'near' packing mode
+MERGE_MAX_WORK = 2e7      # skip merging when (excess routes x n) exceeds this
 
 
 def enforce_vehicle_limit(inst, sol: Solution, deadline=None, nb=None) -> Solution:
@@ -27,9 +29,16 @@ def enforce_vehicle_limit(inst, sol: Solution, deadline=None, nb=None) -> Soluti
     if len(routes) <= inst.vehicles:
         return Solution(routes)
 
-    merged = Solution(_merge_routes(inst, routes, deadline))
-    if len(merged.routes) <= inst.vehicles:
-        return merged
+    # Each merge step costs O(n). Normally only a few routes are in excess,
+    # but with partial neighbour lists (huge input, little time) Clarke-Wright
+    # can leave thousands; packing is then far faster.
+    excess_work = (len(routes) - inst.vehicles) * inst.n
+    if excess_work <= MERGE_MAX_WORK:
+        merged = Solution(_merge_routes(inst, routes, deadline))
+        if len(merged.routes) <= inst.vehicles:
+            return merged
+    else:
+        merged = Solution(routes)
 
     if nb is None:
         nb = neighbor_lists(inst, PACK_NEIGHBORS)
@@ -37,6 +46,55 @@ def enforce_vehicle_limit(inst, sol: Solution, deadline=None, nb=None) -> Soluti
     # prefer fewer excess routes, then lower cost
     excess = lambda s: max(0, len(s.routes) - inst.vehicles)
     return min((merged, packed), key=lambda s: (excess(s), s.cost(inst)))
+
+
+QUICK_EXTRA_SECONDS = 2.0  # emergency: extra packing attempts if the first doesn't fit V
+
+
+def quick_solution(inst) -> Solution:
+    """Emergency answer when setup used up the time: best-fit decreasing
+    packing on demand, each route ordered by nearest neighbour + 2-opt.
+    Needs no neighbour lists.
+
+    If that needs more than V routes, keep trying briefly (first-fit
+    decreasing, then shuffled orders): an infeasible answer scores 0, while
+    a second or two past the limit costs only a few percent."""
+    q = inst.demand
+    by_demand = sorted(inst.customers, key=lambda c: -q[c])
+    bins = _best_fit(inst, by_demand)
+    if len(bins) > inst.vehicles:
+        stop = time.perf_counter() + QUICK_EXTRA_SECONDS
+        rng = random.Random(0)
+        attempt = _pack_once(inst, by_demand, "first", None)   # how gen.py sets V
+        while True:
+            if len(attempt) < len(bins):
+                bins = attempt
+            if len(bins) <= inst.vehicles or time.perf_counter() >= stop:
+                break
+            attempt = _best_fit(inst, sorted(inst.customers,
+                                             key=lambda c: -q[c] * rng.uniform(0.7, 1.3)))
+    return Solution([_order_route(inst.dist, b) for b in bins])
+
+
+def _best_fit(inst, order):
+    """Best-fit packing in the given order. Free space per route is kept
+    sorted, so each placement is a binary search: O(n log n)."""
+    q, Q = inst.demand, inst.capacity
+    free, ids = [], []                      # sorted free capacity, matching bin ids
+    bins = []
+    for c in order:
+        i = bisect.bisect_left(free, q[c])  # tightest route that still fits
+        if i == len(free):
+            b, room = len(bins), Q - q[c]
+            bins.append([c])
+        else:
+            b, room = ids[i], free[i] - q[c]
+            del free[i], ids[i]
+            bins[b].append(c)
+        j = bisect.bisect_left(free, room)
+        free.insert(j, room)
+        ids.insert(j, b)
+    return bins
 
 
 # ---------------------------------------------------------------- merging
@@ -158,9 +216,11 @@ def _pack(inst, deadline, nb, max_tries=300):
         budget = min(budget, max(0.0, deadline.remaining()) * PACK_BUDGET)
     stop = time.perf_counter() + budget
 
+    # always one attempt; more only while the budget lasts (a few ms each on
+    # normal instances, ~1s each at 15k customers)
     best, best_key = None, None
     for t in range(max_tries):
-        if t >= len(PACK_MODES) and time.perf_counter() >= stop:
+        if t >= 1 and time.perf_counter() >= stop:
             break
         if t < len(PACK_MODES):
             order = by_demand

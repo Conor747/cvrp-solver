@@ -131,7 +131,9 @@ class Inst:
         self.n = len(self.demand)
         flat = (float(x) for line in nums[1:] for x in line.split())
         self.dist = [array("d", (next(flat) for _ in range(self.n))) for _ in range(self.n)]
-        self.capacity, self.vehicles = keys["capacity"], int(keys["vehicles"])
+        # a missing line means unlimited (same convention as the solver)
+        self.capacity = keys.get("capacity", sum(self.demand))
+        self.vehicles = int(keys.get("vehicles", self.n - 1))
 
 
 def check(inst, stdout):

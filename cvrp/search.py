@@ -350,6 +350,8 @@ def improve(inst, sol, deadline, nb=None, seed=0, log=None):
 
     n_used = sum(1 for r in cur.routes if r)
     avg_edge = cur.cost / (inst.n - 1 + n_used)
+    if avg_edge <= 0:          # all distances zero: every feasible answer is optimal
+        return Solution(best)
     t0, t1 = T_START * avg_edge, T_END * avg_edge
     begin, span = deadline.elapsed(), max(deadline.remaining(), 1e-9)
 

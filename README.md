@@ -12,6 +12,7 @@ cvrp/search.py       improvement until the deadline: ruin & recreate + granular 
                      search (relocate, swap, 2-opt, 2-opt*), simulated-annealing acceptance
 gen.py               instance generator (deterministic per --seed)
 bench/evaluate.py    evaluation harness: multi-seed runs, independent checker, spec scoring
+bench/robustness.py  edge-case suite (impossible instances, odd formats/values); run before committing
 samples/             spec example, 6-customer example, tight-vehicle edge case
 ```
 
@@ -23,6 +24,12 @@ for every team's test cases. `--time SECONDS` or `--size` override it. If the wo
 missing or unknown, the solver assumes small (30s): overrunning 1.5x the limit costs
 far more than stopping early. The search stops at
 L - max(2s, 5% of L): 28s / 57s / 171s. Startup + printing measured at ~0.05-0.4s.
+
+Oversized inputs (e.g. 15k-20k customers labelled small/medium): neighbour lists may use
+at most half the time left after parsing and are cut short otherwise; if the deadline has
+passed after parsing or after the neighbour lists, the solver answers at once with a quick
+demand packing (<1s at 20k customers). Measured: 15k at 30s -> 29.5s, 20k at 60s -> 57.5s,
+all feasible. Missing Capacity/Vehicles lines are treated as unlimited, with a warning.
 
 Generate: `python gen.py --size medium --n 500 --seed 2 --layout clustered --slack 0 -o medium.txt`
 (`python gen.py -h` for all options). Vehicles = FFD bin count + `--slack`, so every

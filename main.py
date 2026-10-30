@@ -17,19 +17,38 @@ pollutes the graded output.
 
 import argparse
 import sys
+import time
 
 from cvrp import timer                      # import first: starts the clock
 from cvrp.instance import read_instance
 from cvrp.construct import clarke_wright, first_fit_decreasing
 from cvrp.neighbors import neighbor_lists
-from cvrp.repair import enforce_vehicle_limit
+from cvrp.repair import enforce_vehicle_limit, quick_solution
 from cvrp.search import improve
 
 K_NEIGHBORS = 100       # Clarke-Wright uses all 100; repair and search use fewer
+NB_SHARE = 0.5          # neighbour lists may use at most this share of the time left
 
 
 def solve(inst, deadline, log=None, seed=0):
-    nb = neighbor_lists(inst, K_NEIGHBORS)
+    # Huge input + short limit: parsing may already have used the budget.
+    # Then answer immediately; every extra second past the limit costs score.
+    if deadline.expired():
+        if log:
+            log(f"[setup] no time left after parsing ({deadline.elapsed():.1f}s): quick packing only")
+        return quick_solution(inst)
+    # Neighbour lists are O(n^2): cap them so the rest still fits. On normal
+    # inputs they take a few percent of the budget and are never cut.
+    stop = time.perf_counter() + NB_SHARE * deadline.remaining()
+    nb = neighbor_lists(inst, K_NEIGHBORS, stop_at=stop)
+    if log:
+        done = sum(1 for l in nb if l)
+        if done < inst.n - 1:
+            log(f"[setup] neighbour lists cut short: {done}/{inst.n - 1} customers")
+    if deadline.expired():                  # second checkpoint, same reason
+        if log:
+            log(f"[setup] no time left after neighbour lists ({deadline.elapsed():.1f}s): quick packing only")
+        return quick_solution(inst)
     sol = clarke_wright(inst, nb)
     sol = enforce_vehicle_limit(inst, sol, deadline, nb)
     try:
@@ -54,6 +73,8 @@ def main():
     args = ap.parse_args()
 
     inst = read_instance(args.path)       # the clock is already running
+    for note in inst.notes or []:
+        print(f"warning: {note}", file=sys.stderr)
 
     # an unknown size word must not kill the run: no output scores 0
     for source, word in (("--size", args.size), ("file", inst.size)):

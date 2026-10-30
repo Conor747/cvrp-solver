@@ -31,6 +31,7 @@ class Instance:
     capacity: float
     vehicles: int
     size: str = None           # word on the first line, lowercased; None if absent
+    notes: list = None         # parser warnings (e.g. a missing line), for stderr
 
     @property
     def customers(self):
@@ -88,10 +89,17 @@ def parse_lines(lines) -> Instance:
         raise ValueError("Empty input: no demand line")
     if len(dist) < n:
         raise ValueError(f"Expected {n} matrix rows, found {len(dist)}")
-    if "capacity" not in keys or "vehicles" not in keys:
-        raise ValueError("Missing 'Capacity:' or 'Vehicles:' line")
+    # A missing Capacity/Vehicles line must not cost a whole instance:
+    # treat the missing constraint as unlimited and say so on stderr.
+    notes = []
+    if "capacity" not in keys:
+        keys["capacity"] = sum(demand)
+        notes.append("no 'Capacity:' line; assuming unlimited capacity")
+    if "vehicles" not in keys:
+        keys["vehicles"] = n - 1
+        notes.append("no 'Vehicles:' line; assuming one vehicle per customer")
     return Instance(n=n, demand=demand, dist=dist, capacity=keys["capacity"],
-                    vehicles=int(round(keys["vehicles"])), size=size)
+                    vehicles=int(round(keys["vehicles"])), size=size, notes=notes)
 
 
 def parse_text(text: str) -> Instance:
