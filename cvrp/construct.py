@@ -48,9 +48,9 @@ def clarke_wright(inst, nb=None):
     d, q, Q = inst.dist, inst.demand, inst.capacity
     custs = list(inst.customers)
 
-    routes = {c: [c] for c in custs}      # route id -> list of customers
-    load = {c: q[c] for c in custs}       # route id -> total demand
-    route_of = {c: c for c in custs}      # customer -> route id
+    routes = {c: [c] for c in custs}
+    load = {c: q[c] for c in custs}
+    route_of = {c: c for c in custs}
 
     d0 = d[0]
     savings = []
@@ -84,9 +84,9 @@ def clarke_wright(inst, nb=None):
             continue
 
         if A[-1] != i:
-            A.reverse()                   # now ... -> i
+            A.reverse()
         if B[0] != j:
-            B.reverse()                   # now j -> ...
+            B.reverse()
         merged = A + B
 
         # keep the larger route's id so we relabel fewer customers

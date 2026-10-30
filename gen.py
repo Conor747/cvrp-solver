@@ -1,23 +1,3 @@
-"""CVRP instance generator.
-
-Points are placed in a square grid; distances are Euclidean, rounded.
-The same command + seed always produces the same file (the spec asks us
-to submit both with each dataset).
-
-Usage:
-    python gen.py --size small --n 100 --seed 1 > small.txt
-    python gen.py --size medium --n 500 --seed 2 --layout clustered --slack 0 -o medium.txt
-
-The first line of the file is the size word (small / medium / large), as
-the instructor requires for every team's test cases; it sets the solver's
-time limit (30 / 60 / 180s). Distances are written with at most 6
-significant digits (scientific notation for very large values).
-
-Vehicles = (bins needed by first-fit-decreasing) + slack, so every
-generated instance is guaranteed feasible. --slack 0 gives the tightest
-instances: Clarke-Wright alone will usually need one route too many.
-"""
-
 import argparse
 import math
 import random
@@ -51,8 +31,6 @@ def ffd_bins(demands, capacity):
 
 
 def generate(args, out):
-    """Write the instance to the file object `out`, one matrix row at a time
-    (the full matrix would not fit in memory for large n)."""
     rng = random.Random(args.seed)
     n = args.n
 
@@ -68,8 +46,6 @@ def generate(args, out):
     dec = args.decimals
     out.write(args.size + "\n")
     out.write(" ".join(map(str, demand)) + "\n")
-    # hypot(a-b) and hypot(b-a) are bit-identical, so rows stay symmetric;
-    # round to --decimals, then to at most 6 significant digits
     for i, (xi, yi) in enumerate(pts):
         out.write(" ".join("0" if i == j else f"{round(math.hypot(xi - x, yi - y), dec):.6g}"
                            for j, (x, y) in enumerate(pts)) + "\n")

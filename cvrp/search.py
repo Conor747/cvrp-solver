@@ -1,54 +1,24 @@
-"""Improvement phase: granular local search inside a ruin-and-recreate loop.
-
-Structure
-  State        routes + per-customer bookkeeping (route, position, cumulative
-               load). Holds exactly `slots` routes (>= V), some may be empty,
-               so no move can ever exceed the vehicle limit.
-  descend()    first-improvement local search. For a customer u, only the
-               K nearest customers v are tried ("granular" neighbourhood):
-                 relocate u before/after v, swap u and v,
-                 2-opt (same route), 2-opt* (two routes, both variants).
-               Every move is checked in O(1) using the cumulative loads.
-  ruin()       SISR-style: remove a few strings of consecutive customers
-               from routes near a random seed customer.
-  recreate()   greedy cheapest insertion near each customer's neighbours,
-               with "blinks" (randomly skipped positions) for diversity.
-  improve()    the loop: ruin -> recreate -> descend -> simulated-annealing
-               acceptance, until the deadline. Returns the best solution.
-
-The matrix is assumed symmetric (the spec guarantees it); 2-opt and the
-reversing 2-opt* variant rely on that.
-"""
-
 import math
 import os
 import random
-
 from .neighbors import neighbor_lists
 from .solution import Solution
 
-# Tuned with bench/evaluate.py (Oct 28): quick-mode screening of each value,
-# then a full-limit check, 3 seeds each. Tried and rejected: T_START 0.1, 2, 4;
-# T_END 0.001, 0.02; AVG_REMOVED 5, 15, 20; K_NEIGHBORS 40; MAX_STRING 5.
-K_NEIGHBORS = 20          # granular neighbourhood size (was 30: 20 = more iterations)
+K_NEIGHBORS = 20
 EPS = 1e-9
 
-# ruin & recreate (values from the SISR paper, scaled down)
-AVG_REMOVED = 10          # average customers removed per ruin
-MAX_STRING = 10           # max string length
+#For ruin & recreate
+AVG_REMOVED = 10
+MAX_STRING = 10
 BLINK_RATE = 0.01
 
-# simulated annealing, as multiples of the average edge length
-T_START = 1.0             # was 0.3: a hotter start escapes local optima better
+#For simulated annealing
+T_START = 1.0
 T_END = 0.005
 
 TUNABLE = ("K_NEIGHBORS", "AVG_REMOVED", "MAX_STRING", "BLINK_RATE", "T_START", "T_END")
 
-
 def _apply_overrides():
-    """Experiments only: CVRP_PARAMS="T_START=0.1,AVG_REMOVED=15" overrides
-    the constants above (set by bench/evaluate.py --param). Never set in
-    normal runs; a malformed value is ignored rather than crashing."""
     for item in filter(None, os.environ.get("CVRP_PARAMS", "").split(",")):
         name, _, value = item.partition("=")
         name = name.strip()
@@ -59,11 +29,8 @@ def _apply_overrides():
             except ValueError:
                 pass
 
-
 _apply_overrides()
 
-
-# ---------------------------------------------------------------- state
 
 class State:
     def __init__(self, inst, routes, slots):
@@ -72,7 +39,7 @@ class State:
         n = inst.n
         self.route_of = [-1] * n
         self.pos = [0] * n
-        self.cum = [0.0] * n                  # load from route start through c
+        self.cum = [0.0] * n
         self.load = [0.0] * slots
         self.rcost = [0.0] * slots
         self.cost = 0.0
@@ -80,7 +47,6 @@ class State:
             self.refresh(r)
 
     def refresh(self, r):
-        """Recompute bookkeeping for route r after it changed."""
         q, d = self.inst.demand, self.inst.dist
         route_of, pos, cum = self.route_of, self.pos, self.cum
         acc, c_cost, prev = 0.0, 0.0, 0
@@ -112,11 +78,7 @@ class State:
         return [r[:] for r in self.routes if r]
 
 
-# ---------------------------------------------------------------- local search
-
 def descend(st, nb, queue, deadline):
-    """Apply improving moves until none is left among the queued customers.
-    A customer touched by a move goes back on the queue."""
     queue = list(queue)
     queued = set(queue)
     steps = 0
@@ -137,8 +99,6 @@ def descend(st, nb, queue, deadline):
 
 
 def _improve_customer(st, nbu, u):
-    """Try all moves between u and its neighbours; apply the first improving
-    one. Returns the customers whose surroundings changed, or None."""
     inst = st.inst
     d, q, Q = inst.dist, inst.demand, inst.capacity
     routes, route_of, pos, cum, load = st.routes, st.route_of, st.pos, st.cum, st.load
@@ -150,7 +110,7 @@ def _improve_customer(st, nbu, u):
     nu = Ru[iu + 1] if iu + 1 < len(Ru) else 0
     du = d[u]
     qu = q[u]
-    rem_u = d[pu][nu] - du[pu] - du[nu]       # gain from taking u out
+    rem_u = d[pu][nu] - du[pu] - du[nu]
 
     for v in nbu:
         rv = route_of[v]
@@ -165,7 +125,6 @@ def _improve_customer(st, nbu, u):
         same = ru == rv
         fits_u = same or load[rv] + qu <= Q
 
-        # relocate u after v / before v
         if fits_u:
             if v != pu and rem_u + duv + du[nv] - dv[nv] < -EPS:
                 _relocate(st, u, v, after=True)
@@ -174,7 +133,6 @@ def _improve_customer(st, nbu, u):
                 _relocate(st, u, v, after=False)
                 return (u, v, pu, nu, pv)
 
-        # swap u and v
         if (v != nu and v != pu) if same else \
                 (load[ru] - qu + q[v] <= Q and load[rv] - q[v] + qu <= Q):
             delta = (d[pu][v] + dv[nu] - du[pu] - du[nu]
@@ -187,7 +145,6 @@ def _improve_customer(st, nbu, u):
                 return (u, v, pu, nu, pv, nv)
 
         if same:
-            # 2-opt: reverse a segment so that u and v become adjacent
             if iu < iv:
                 if v != nu and duv + d[nu][nv] - du[nu] - dv[nv] < -EPS:
                     Ru[iu + 1:iv + 1] = Ru[iu + 1:iv + 1][::-1]
@@ -198,7 +155,6 @@ def _improve_customer(st, nbu, u):
                 st.refresh(ru)
                 return (u, v, pu, pv)
         else:
-            # 2-opt* (a): Ru[..u] + Rv[v..]   and   Rv[..pv] + Ru[nu..]
             head_v = cum[v] - q[v]
             if (cum[u] + load[rv] - head_v <= Q and head_v + load[ru] - cum[u] <= Q
                     and duv + d[pv][nu] - du[nu] - dv[pv] < -EPS):
@@ -207,7 +163,6 @@ def _improve_customer(st, nbu, u):
                 st.refresh(ru)
                 st.refresh(rv)
                 return (u, v, nu, pv)
-            # 2-opt* (b): Ru[..u] + reversed(Rv[..v])   and   reversed(Ru[nu..]) + Rv[nv..]
             if (cum[u] + cum[v] <= Q and load[ru] - cum[u] + load[rv] - cum[v] <= Q
                     and duv + d[nu][nv] - du[nu] - dv[nv] < -EPS):
                 A = Ru[:iu + 1] + Rv[iv::-1]
@@ -223,17 +178,14 @@ def _relocate(st, u, v, after):
     ru, rv = st.route_of[u], st.route_of[v]
     st.routes[ru].pop(st.pos[u])
     Rv = st.routes[rv]
-    i = Rv.index(v)                           # v may have shifted if ru == rv
+    i = Rv.index(v)
     Rv.insert(i + 1 if after else i, u)
     st.refresh(ru)
     if rv != ru:
         st.refresh(rv)
 
 
-# ---------------------------------------------------------------- ruin & recreate
-
 def ruin(st, nb, rng):
-    """Remove strings of consecutive customers from routes near a seed."""
     routes, route_of, pos = st.routes, st.route_of, st.pos
     used = [r for r in routes if r]
     avg_size = sum(map(len, used)) / len(used)
@@ -264,8 +216,6 @@ def ruin(st, nb, rng):
 
 
 def recreate(st, nb, removed, rng):
-    """Reinsert removed customers one by one at the cheapest position next to
-    one of their neighbours (or into an empty route). False if one doesn't fit."""
     inst = st.inst
     d, q, Q = inst.dist, inst.demand, inst.capacity
     routes, route_of, pos, load = st.routes, st.route_of, st.pos, st.load
@@ -292,11 +242,11 @@ def recreate(st, nb, removed, rng):
             i = pos[v]
             p = R[i - 1] if i > 0 else 0
             n = R[i + 1] if i + 1 < len(R) else 0
-            if rng.random() >= BLINK_RATE:                     # before v
+            if rng.random() >= BLINK_RATE:
                 delta = dc[p] + dc[v] - d[p][v]
                 if best is None or delta < best:
                     best, best_r, best_i = delta, r, i
-            if rng.random() >= BLINK_RATE:                     # after v
+            if rng.random() >= BLINK_RATE:
                 delta = dc[v] + dc[n] - d[v][n]
                 if best is None or delta < best:
                     best, best_r, best_i = delta, r, i + 1
@@ -314,7 +264,6 @@ def recreate(st, nb, removed, rng):
 
 
 def _cheapest_anywhere(st, c):
-    """Full scan fallback when no neighbour's route has room."""
     d, qc, Q = st.inst.dist, st.inst.demand[c], st.inst.capacity
     dc = d[c]
     best, best_r, best_i = None, None, None
@@ -328,9 +277,6 @@ def _cheapest_anywhere(st, c):
                 best, best_r, best_i = delta, r, i
             prev = nxt
     return best_r, best_i
-
-
-# ---------------------------------------------------------------- main loop
 
 def improve(inst, sol, deadline, nb=None, seed=0, log=None):
     if inst.n <= 2 or not sol.routes:
@@ -350,7 +296,7 @@ def improve(inst, sol, deadline, nb=None, seed=0, log=None):
 
     n_used = sum(1 for r in cur.routes if r)
     avg_edge = cur.cost / (inst.n - 1 + n_used)
-    if avg_edge <= 0:          # all distances zero: every feasible answer is optimal
+    if avg_edge <= 0:
         return Solution(best)
     t0, t1 = T_START * avg_edge, T_END * avg_edge
     begin, span = deadline.elapsed(), max(deadline.remaining(), 1e-9)

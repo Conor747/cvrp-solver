@@ -1,51 +1,29 @@
-"""Entry point.
-
-Usage:
-    python main.py instance.txt                # read from a file
-    python main.py < instance.txt              # read from stdin
-    python main.py instance.txt --size large   # override: 180s (small=30, medium=60)
-    python main.py instance.txt --time 45      # override: explicit limit in seconds
-    python main.py instance.txt --debug        # self-check report on stderr
-
-The time limit comes from the size word on the first line of the instance
-(small / medium / large, any capitalization). Priority: --time, --size, the
-file's word, then 30s (assume small, the safest guess).
-
-Answer goes to stdout; anything diagnostic goes to stderr so it never
-pollutes the graded output.
-"""
-
 import argparse
 import sys
 import time
-
-from cvrp import timer                      # import first: starts the clock
+from cvrp import timer
 from cvrp.instance import read_instance
 from cvrp.construct import clarke_wright, first_fit_decreasing
 from cvrp.neighbors import neighbor_lists
 from cvrp.repair import enforce_vehicle_limit, quick_solution
 from cvrp.search import improve
 
-K_NEIGHBORS = 100       # Clarke-Wright uses all 100; repair and search use fewer
-NB_SHARE = 0.5          # neighbour lists may use at most this share of the time left
-
+K_NEIGHBORS = 100
+NB_SHARE = 0.5
 
 def solve(inst, deadline, log=None, seed=0):
-    # Huge input + short limit: parsing may already have used the budget.
-    # Then answer immediately; every extra second past the limit costs score.
     if deadline.expired():
         if log:
             log(f"[setup] no time left after parsing ({deadline.elapsed():.1f}s): quick packing only")
         return quick_solution(inst)
-    # Neighbour lists are O(n^2): cap them so the rest still fits. On normal
-    # inputs they take a few percent of the budget and are never cut.
+    
     stop = time.perf_counter() + NB_SHARE * deadline.remaining()
     nb = neighbor_lists(inst, K_NEIGHBORS, stop_at=stop)
     if log:
         done = sum(1 for l in nb if l)
         if done < inst.n - 1:
             log(f"[setup] neighbour lists cut short: {done}/{inst.n - 1} customers")
-    if deadline.expired():                  # second checkpoint, same reason
+    if deadline.expired():
         if log:
             log(f"[setup] no time left after neighbour lists ({deadline.elapsed():.1f}s): quick packing only")
         return quick_solution(inst)
@@ -55,7 +33,7 @@ def solve(inst, deadline, log=None, seed=0):
         better = improve(inst, sol, deadline, nb=nb, seed=seed, log=log)
         if better.is_feasible(inst) or not sol.is_feasible(inst):
             sol = better
-    except Exception as e:                  # keep the constructed solution
+    except Exception as e:
         print(f"search crashed: {e!r}; using constructed solution", file=sys.stderr)
     return sol
 
@@ -72,11 +50,10 @@ def main():
     ap.add_argument("--debug", action="store_true")
     args = ap.parse_args()
 
-    inst = read_instance(args.path)       # the clock is already running
+    inst = read_instance(args.path)
     for note in inst.notes or []:
         print(f"warning: {note}", file=sys.stderr)
 
-    # an unknown size word must not kill the run: no output scores 0
     for source, word in (("--size", args.size), ("file", inst.size)):
         if word is not None and word not in timer.LIMITS:
             print(f"unknown size {word!r} from {source}; ignoring it", file=sys.stderr)
@@ -93,7 +70,7 @@ def main():
     try:
         log = (lambda msg: print(msg, file=sys.stderr)) if args.debug else None
         sol = solve(inst, deadline, log, args.seed)
-    except Exception as e:                  # never exit without an answer
+    except Exception as e:
         print(f"solver crashed: {e!r}; using fallback", file=sys.stderr)
         sol = first_fit_decreasing(inst)
 
