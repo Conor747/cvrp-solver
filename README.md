@@ -9,7 +9,7 @@ generator, and our submitted test datasets.
 
 ## Running the solver
 
-## From the repository root:
+From the repository root:
 ```
 python main.py <instance file>
 ```
@@ -66,7 +66,7 @@ the number of vehicles is exactly the bin-packing minimum (no spare vehicle).
 The exact command, seed and SHA-256 checksum of each file are in
 [datasets/MANIFEST.md](datasets/MANIFEST.md). To rebuild them (about 1.4 GB, written to `datasets/out/`):
 
-## Rebuiling the datasets
+## Rebuilding the datasets
 ```
 python datasets/make_datasets.py                # generate missing files + MANIFEST.md
 python datasets/make_datasets.py --run          # also run the solver on each
