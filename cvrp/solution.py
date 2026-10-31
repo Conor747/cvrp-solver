@@ -40,7 +40,7 @@ class Solution:
         return not self.problems(inst)
 
     def format(self, inst):
-        lines = [f"{self.cost(inst):.2f}"]
+        lines = [f"{self.cost(inst):.10g}"]
         for r in self.routes:
             lines.append(" ".join(map(str, [0, *r, 0])))
         return "\n".join(lines)

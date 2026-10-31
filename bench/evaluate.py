@@ -129,8 +129,8 @@ def check(inst, stdout):
         cost += sum(d[a][b] for a, b in zip(r, r[1:]))
     if sorted(seen) != list(range(1, inst.n)):
         return None, "customers not visited exactly once"
-    if abs(printed - cost) > 0.01:
-        return None, f"printed cost {printed} != route cost {cost:.2f}"
+    if abs(printed - cost) > max(1e-6, 1e-8 * abs(cost)):
+        return None, f"printed cost {printed} != route cost {cost:.10g}"
     return cost, None
 
 
