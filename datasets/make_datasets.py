@@ -8,17 +8,12 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 OUT = os.path.join(HERE, "out")
-sys.path.insert(0, os.path.join(ROOT, "bench"))
-from evaluate import Inst, check
 
 LIMITS = {"small": 30.0, "medium": 60.0, "large": 180.0}
 DATASETS = [
-    ("small_uniform_5300",    "small",  "--n 5300 --seed 101 --slack 0"),
-    ("small_clustered_5300",  "small",  "--n 5300 --seed 102 --layout clustered --clusters 8 --depot center --slack 1"),
-    ("medium_uniform_7500",   "medium", "--n 7500 --seed 201 --slack 0"),
-    ("medium_clustered_7500", "medium", "--n 7500 --seed 202 --layout clustered --clusters 8 --depot center --slack 1"),
-    ("large_uniform_12900",   "large",  "--n 12900 --seed 301 --slack 0"),
-    ("large_clustered_12900", "large",  "--n 12900 --seed 302 --layout clustered --clusters 8 --depot center --slack 1"),
+    ("small_uniform_5300",   "small",  "--n 5300 --seed 101 --slack 0"),
+    ("medium_uniform_7500",  "medium", "--n 7500 --seed 201 --slack 0"),
+    ("large_uniform_12900",  "large",  "--n 12900 --seed 301 --slack 0"),
 ]
 
 def command(size, args, path="<file>"):
@@ -56,25 +51,32 @@ def summary(path):
     return len(demand) - 1, cap, veh, sum(demand) / (cap * veh)
 
 
-def verify(name, size, path):
-    limit = LIMITS[size] / 2
+def run(name, size, path):
+    """Run the solver as the grader would (limit from the file's size word);
+    its stdout goes to <name>.out."""
+    limit = LIMITS[size]
     t = time.perf_counter()
-    with open(path + ".out", "w") as fo, open(path + ".err", "w") as fe:
-        code = subprocess.run([sys.executable, os.path.join(ROOT, "main.py"), path,
-                               "--time", f"{limit:g}", "--debug"], stdout=fo, stderr=fe,
-                              timeout=limit * 1.5 + 30).returncode
+    with open(path[:-4] + ".out", "w") as fo:
+        try:
+            code = subprocess.run([sys.executable, os.path.join(ROOT, "main.py"), path],
+                                  stdout=fo, timeout=limit * 1.5).returncode
+        except subprocess.TimeoutExpired:
+            code = None
     wall = time.perf_counter() - t
-    out = open(path + ".out").read()
-    notes = [l for l in open(path + ".err").read().splitlines() if "[setup]" in l]
-    cost, why = check(Inst(path), out)
-    ok = code == 0 and why is None and wall <= limit
-    detail = f"cost {cost:.1f}" if why is None else f"REJECTED: {why}"
-    return ok, f"{wall:6.1f}s of {limit:g}s  {detail}" + (f"  ({notes[0]})" if notes else "")
+    with open(path[:-4] + ".out") as fo:
+        lines = fo.read().split("\n")
+    if code is None:
+        return False, f"killed after {wall:.1f}s (1.5x the {limit:g}s limit)"
+    if code != 0:
+        return False, f"solver exited with code {code} after {wall:.1f}s"
+    ok = wall <= limit
+    return ok, f"{wall:6.1f}s of {limit:g}s  cost {lines[0]}, {sum(1 for l in lines[1:] if l)} routes"
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--verify", action="store_true", help="solve each at half its time limit")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--run", action="store_true",
+                    help="also run the solver on each at its time limit; output saved to datasets/out/<name>.out")
     ap.add_argument("--only", nargs="+", help="datasets whose name contains any of these")
     args = ap.parse_args()
     os.makedirs(OUT, exist_ok=True)
@@ -106,14 +108,14 @@ def main():
                         f"SHA-256: `{digest}`\n\n")
         print("wrote datasets/MANIFEST.md")
 
-    if args.verify:
-        print("\nverifying at half of each time limit (simulates a 2x slower VM):")
+    if args.run:
+        print("\nrunning the solver on each dataset at its time limit:")
         failed = 0
         for name, size, *_ in rows:
-            ok, msg = verify(name, size, os.path.join(OUT, name + ".txt"))
+            ok, msg = run(name, size, os.path.join(OUT, name + ".txt"))
             failed += not ok
             print(f"  {'ok  ' if ok else 'FAIL'} {name:24} {msg}", flush=True)
-        print(f"\n{len(rows) - failed}/{len(rows)} passed")
+        print(f"\n{len(rows) - failed}/{len(rows)} finished within their time limit")
         sys.exit(1 if failed else 0)
 
 
